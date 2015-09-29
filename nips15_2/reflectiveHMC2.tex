@@ -1,0 +1,935 @@
+\documentclass{article} % For LaTeX2e
+
+\usepackage{nips15submit_e,times}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{afterpage}
+
+\usepackage{tikz} %for Dia
+\usepackage{wrapfig}
+
+%\documentstyle[nips14submit_09,times,art10]{article} % For LaTeX 2.09
+
+% Import an algorithm formatting package
+%\usepackage[vlined,algoruled,titlenumbered,noend,linesnumbered]{algorithm2e}
+
+%\usepackage{algorithm}
+%\usepackage{algorithmic}
+
+% Import an algorithm formatting package
+\usepackage[vlined,algoruled,titlenumbered,noend,linesnumbered]{algorithm2e}
+
+\usepackage{amsthm} %for theorem and proof
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definition}
+
+\usepackage{amsfonts, amsmath} %for mathbb
+\usepackage{amsmath,amsfonts,amssymb,amsthm}
+
+%\newcommand{\lessgt}{><}%TODO FOR NOW...
+
+\usepackage{verbatim}
+%\usepackage{ntheorem} % framed and list of theorems [standard,framed,thref] \listtheorems{types}		%COMMENTED BY HADI
+\usepackage{color}    % color
+\usepackage{mdframed} %for framing 
+\definecolor{light-gray}{gray}{0.97}
+
+\newtheorem{theorem}{Theorem}
+
+%OLD
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+\newcommand{\ind}[1]{\mathbb{I}[#1]}
+\newcommand{\inde}{\mathbb{I}}
+
+\newcommand{\var}{v}
+\newcommand{\eq}{\leftarrow}
+
+\newcommand{\LB}{\mathit{LB}}
+\newcommand{\UB}{\mathit{UB}}
+
+\newcommand{\B}{\mathbb{B}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\I}{\mathbb{I}}
+\newcommand{\R}{\mathbb{R}}
+
+\newcommand{\F}{\mathbb{F}}
+\renewcommand{\vec}[1]{\mathbf{#1}}
+
+%NEW:
+\newcommand{\tuple}[1] {\langle #1 \rangle}
+\newcommand{\bvec}[1]{\textbf{#1}}
+\newcommand{\indicator}{\mathbb{I}}%{I\!\!I}
+\newcommand{\case}[2]{#2 &\text{ if } #1}%{#1 : #2}
+\newcommand{\singlecase}[2]{#2 \quad \text{ if } #1}
+\newcommand{\otherwise}[1]{#1 &\text{ otherwise}}
+\newcommand{\pr}{p}
+\newcommand{\nn}{0.16}
+\newcommand{\nnn}{0.33}
+\newcommand{\nnh}{0.23}
+\newcommand{\dd}{\;\mathrm{d}} % d for integration variables e.g. dx
+
+
+% to allow skipping line numbers
+\let\oldnl\nl% Store \nl in \oldnl
+\newcommand{\nonl}{\renewcommand{\nl}{\let\nl\oldnl}}% Remove line number for one line
+
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{graphicx} 
+
+
+\title{Reflection, Refraction, and Hamiltonian Monte Carlo}
+
+
+\author{
+Hadi Mohasel Afshar %\thanks{ Use footnote for providing further information about author (webpage, alternative address)---\emph{not} for acknowledging funding agencies.} 
+\\
+Dept. Computer Science \& Engineering \\
+Australian National University\\
+Canberra, ACT 0200\\
+\texttt{hadi.afshar@anu.edu.au} \\
+\And
+Justin Domke\\
+National ICT Australia (NICTA) \& \\Australian National University\\
+Canberra, ACT 0200\\
+\texttt{Justin.Domke@nicta.com.au}
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+
+
+\nipsfinalcopy % Uncomment for camera-ready version
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+Hamiltonian Monte Carlo (HMC) is a successful approach for sampling from continuous densities.  However, it has difficulty simulating Hamiltonian dynamics with non-smooth functions, leading to poor performance.  This paper is motivated by the behavior of Hamiltonian dynamics in physical systems like optics.  We introduce a modification of the Leapfrog discretization of Hamiltonian dynamics on piecewise continuous energies, where intersections of the trajectory with discontinuities are detected, and the momentum is \emph{reflected} or \emph{refracted} to compensate for the change in energy.  We prove that this method preserves the correct stationary distribution when boundaries are affine.  Experiments show that by reducing the number of rejected samples, this method improves on traditional HMC.
+\end{abstract}
+
+
+
+
+\section{Introduction}
+
+Markov chain Monte Carlo sampling is among the most general methods for probabilistic inference.  When the probability distribution is smooth, Hamiltonian Monte Carlo (HMC) (originally called hybrid Monte Carlo \cite{duane1987hybrid}) uses the gradient to simulate Hamiltonian dynamics and reduce random walk behavior. This often leads to a rapid exploration of the distribution \cite{homan2014no, brooks2011handbook}.  HMC has recently become popular in Bayesian statistical inference \cite{stan-manual:2014}, and is often the algorithm of choice.
+
+
+
+Some problems display \emph{piecewise} smoothness, where the density is differentiable except at certain boundaries.  Probabilistic models may intrinsically have finite support, being constrained to some region.  In Bayesian inference, it might be convenient to state a piecewise prior.  More complex and highly piecewise distributions emerge in applications where the distributions are derived from other distributions (e.g. the distribution of the product of two continuous random variables  \cite{ glen2004computing}) as well as  applications such as preference learning \cite{afshar2015linear}, or probabilistic programming \cite{lunn2009bugs}.
+
+%Arbitrary distributions are approximated by piecewise well-behaved families of distributions (e.g.\ mixture of exponentials \cite{jewell1982mixtures})
+
+While HMC is motivated by smooth distributions, the inclusion of an acceptance probability means HMC \emph{does} asymptotically sample correctly from piecewise distributions\footnote{Technically, here we assume the total measure of the non-differentiable points is zero so that, with probability one, none is ever encountered}.  However, since leapfrog numerical integration of Hamiltonian dynamics (see \cite{neal2011mcmc}) relies on the assumption that the corresponding potential energy is smooth, such cases lead to high rejection probabilities, and poor performance.  Hence, traditional HMC is rarely used for piecewise distributions.
+
+In physical systems that follow Hamiltonian dynamics \cite{greenwood1988principles}, a discontinuity in the energy can result in two possible behaviors.  If the energy decreases across a discontinuity, or the momentum is large enough to overcome an increase, the system will cross the boundary with an instantaneous change in momentum, known as \emph{refraction} in the context of optics \cite{buchdahl1993introduction}.  If the change in energy is too large to be overcome by the momentum, the system will \emph{reflect} off the boundary, again with an instantaneous change in momentum.
+
+%In line with this work and motivated by the Hamiltonian formalism on mechanical systems involving instantaneous change of momentum (e.g. collision of a particle to a wall) \cite{greenwood1988principles} and refraction/reflection of a light ray in Hamiltonian optics \cite{buchdahl1993introduction} where the optical momentum perpendicular to the refractive surface instantaneously changes in the refraction point while the other momentum elements are remained constant.
+
+% THIS WOULD BE A GREAT PLACE FOR CARTOON FIGURES
+
+Recently, Pakman et al. \cite{pakman2014exact, pakman2013auxiliary} proposed methods for HMC-based sampling from piecewise Gaussian distributions by exactly solving the Hamiltonian equations, and accounting for what we refer to as refraction and reflection above.  However, since Hamiltonian equations of motion can rarely be solved exactly, the applications of this method are restricted to distributions whose log-density is piecewise quadratic.
+
+% cite can't solve Hamitonian [be precise]
+
+In this paper, we generalize this work to arbitrary piecewise continuous distributions, where each region is a polytope, i.e. is determined by a set of affine boundaries.  We introduce a modification to the leapfrog numerical simulation of Hamiltonian dynamics, called Reflective Hamiltonian Monte Carlo (RHMC), by incorporating reflection and refraction via detecting the first intersection of a linear trajectory with a boundary. We prove that our method has the correct stationary distribution, where the main technical difficulty is proving volume preservation of our dynamics to establish detailed balance.  Numerical experiments confirm that our method is more efficient than baseline HMC, due to having fewer rejected proposal trajectories, particularly in high dimensions.  As mentioned, the main advantage of this method over \cite{pakman2014exact} and \cite{pakman2013auxiliary} is that it can be applied to arbitrary piecewise densities, without the need for a closed-form solution to the Hamiltonian dynamics, greatly increasing the scope of applicability.
+
+% do we emphasize must detect intersection
+
+\section{Exact Hamiltonian Dynamics }
+
+Consider a distribution $P(\bvec{q})\propto \exp(-U(\bvec{q}))$ over $\mathbb{R}^n$, where $U$ is the \emph{potential energy}.  HMC \cite{neal2011mcmc} is based on considering a joint distribution on momentum and position space $P(\bvec{q}, \bvec{p})\propto\exp(-H(\bvec{q}, \bvec{p}))$, where $H(\bvec{q}, \bvec{p})=U(\bvec{q})+K(\bvec{p})$, and $K$ is a quadratic, meaning that $P(\bvec{p}) \propto \exp(-K(\bvec{p}))$ is a normal distribution.  If one could exactly simulate the dynamics, HMC would proceed by (1) iteratively sampling $\bvec{p} \sim P(\bvec{p})$, 
+(2) simulating the Hamiltonian dynamics
+%
+\begin{tabular}{p{5.5cm}p{7.8cm}}
+{
+\begin{align}\label{e:motion1}
+&
+\frac{\dd q_i}{\dd t} = \frac{\partial H}{\partial p_{i}} = p_i
+\end{align} }
+&{
+\begin{align}\label{e:motion2}
+\frac{\dd p_i}{\dd t} = 
+-\frac{\partial H}{\partial q_{i}} = 
+-\frac{\partial U}{\partial q_{i}}
+\end{align} 
+}
+\end{tabular}
+%
+for some period of time $\epsilon$, and (3) reversing the final value $\bvec{p}$.  (Only needed for the proof of correctness, since this will be immediately discarded at the start of the next iteration in practice.)  Since steps (1) and (2-3) both leave the distribution $P(\bvec{p}, \bvec{q})$ invariant, so does a Markov chain that alternates between the two steps.  Hence, the dynamics have $P(\bvec{p}, \bvec{q})$ as a stationary distribution.  Of course, the above differential equations are not well-defined when $U$ has discontinuities, and are typically difficult to solve in closed-form.
+
+\begin{figure*}[t!]
+\setlength{\tabcolsep}{0em}
+\vspace{-1mm}
+\begin{center}
+\begin{tabular}{ccc}
+%   \hspace{-5mm} \includegraphics[width=0.50\textwidth]{figs1/BaselineHMC_scatter2D.png} 
+%& \hspace{-3mm} \includegraphics[width=0.50\textwidth]{figs1/ReflectiveHMC_scatter2D.png} 
+\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/dist_contour.pdf}
+& \includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/BaselineHMC_l25_eps0_1_log_scatter2D.pdf} 
+&\includegraphics[trim={3.2cm 6cm 3cm 9cm},clip,width=0.33\textwidth]{../plots3/ReflectiveHMC_l25_eps0_1_log_scatter2D_annotated.pdf}  \\
+\vspace{-3.5mm}
+\\
+   \footnotesize(a) 
+& \footnotesize(b) 
+& \footnotesize(c) 
+\\
+\multicolumn{2}{c}{}
+\end{tabular}
+\end{center}
+\vspace{-8mm}
+\caption{\footnotesize
+Example trajectories of baseline and reflective HMC. (a) Contours of the target distribution in two dimensions, as defined in Eq. \ref{eq:Uq}. (b) Trajectories of the rejected (red crosses) and accepted (blue dots) proposals using baseline HMC. (c) The same with RHMC. Both use leapfrog parameters $L=25$ and $\epsilon=0.1$ In RHMC, the trajectory reflects or refracts on the boundaries of the internal and external polytope boundaries and thus has far fewer rejected samples than HMC, leading to faster mixing in practice.} 
+\label{fig:mom}
+\vspace{-10pt}
+\end{figure*}
+
+\iffalse
+\begin{figure*}[t!]
+\setlength{\tabcolsep}{0em}
+\vspace{-1mm}
+\begin{center}
+\begin{tabular}{ccc}
+%   \hspace{-5mm} \includegraphics[width=0.50\textwidth]{figs1/BaselineHMC_scatter2D.png} 
+%& \hspace{-3mm} \includegraphics[width=0.50\textwidth]{figs1/ReflectiveHMC_scatter2D.png} 
+\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/BaselineHMC_l10_eps0_5_log_scatter2D.pdf} 
+&\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/ReflectiveHMC_l10_eps0_5_log_scatter2D} \\
+\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/BaselineHMC_l25_eps0_1_log_scatter2D.pdf} 
+&\includegraphics[trim={3.2cm 6cm 3cm 9cm},clip,width=0.33\textwidth]{../plots3/ReflectiveHMC_l25_eps0_1_log_scatter2D_annotated.pdf}
+&\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/energy_contour.pdf}  \\
+  \includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/BaselineHMC_l25_eps0_2_log_scatter2D.pdf} 
+&\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/ReflectiveHMC_l25_eps0_2_log_scatter2D.pdf} 
+&\includegraphics[trim={3.2cm 6cm 3.2cm 9cm},clip,width=0.33\textwidth]{../plots3/dist_contour.pdf} 
+\vspace{-1.5mm}
+\\
+   \hspace{-5mm} \footnotesize(a) 
+& \hspace{-4mm} \footnotesize(b) 
+\\
+\multicolumn{2}{c}{}
+\end{tabular}
+\end{center}
+\vspace{-8mm}
+\caption{\footnotesize
+Trajectories of the rejected (red) and accepted (blue) Hamiltonian proposals using (a) baseline and (b) reflective HMC (RHMC) both tuned with leapfrog parameters $L=100$ and $\epsilon=0.1$ in the 2D model described in Section~\ref{sect:example}. 
+In RHMC, the trajectory reflects or refracts on the boundaries of the internal and external polytope boundaries and ends very few proposal rejections (0 for the depicted samples) while most proposals generated by baseline HMC are in the 0-probability region and all rejected.   
+} 
+\label{fig:mom}
+\vspace{-10pt}
+\end{figure*}
+\fi
+
+
+\section{Reflection and Refraction with Exact Hamiltonian Dynamics}
+
+
+Take a potential function $U(\bvec{q})$ which is differentiable in all points except at some boundaries of partitions.  Suppose that, when simulating the Hamiltonian dynamics, $(\bvec{q}, \bvec{p})$ evolves over time as in the above equations whenever these equations are differentiable.  However, when the state reaches a boundary, decompose the momentum vector $\bvec{p}$ into a component $\bvec{p}_\perp$ perpendicular to the boundary and a component $\bvec{p}_\parallel$ parallel to the boundary.  
+Let $\Delta U$ be the (signed) difference in potential energy on the two sides of the discontinuity.   If $\Vert \bvec{p}_\perp \Vert^2 > 2\Delta U$ then $\bvec{p}_\perp$ is instantaneously replaced by $\bvec{p}'_\perp := \sqrt{ \Vert \bvec{p}_\perp \Vert^2 - 2 \Delta U} \cdot \frac{\bvec{p}_\perp}{\Vert \bvec{p}_\perp \Vert}$. 
+That is, the discontinuity is passed, but the momentum is changed in the direction perpendicular to the boundary (refraction).  (If $\Delta U$ is positive, the momentum will decrease, and if it is negative, the momentum will increase.)  On the other hand, if $\Vert \bvec{p}_\perp \Vert^2 \leq 2\Delta U$, then $\bvec{p}_\perp$ is instantaneously replaced by $-\bvec{p}_\perp$.  That is, if the particle's momentum is insufficient to climb the potential boundary, it bounces back by reversing the momentum component which is perpendicular to the boundary.
+
+Pakman and Paninski \cite{pakman2014exact, pakman2013auxiliary} present an algorithm to exactly solve these dynamics for quadratic $U$.  However, for non-quadratic $U$, the Hamiltonian dynamics rarely have a closed-form solution, and one must resort to numerical integration, the most succesful method for which is known as the \emph{leapfrog} dynamics.
+
+
+
+
+\section{Reflection and Refraction with Leapfrog Dynamics}
+
+Informally, HMC with leapfrog dynamics iterates three steps. (1) Sample $\bvec{p} \sim P(\bvec{p})$. (2) Perform leapfrog simulation, by discretizing the Hamiltonian equations into $L$ steps using some small step-size $\epsilon$.  Here, one interleaves a \emph{position step} 
+$\bvec{q} \leftarrow \bvec{q} + \epsilon \bvec{p}$ 
+between two half \emph{momentum} steps $\bvec{p} \leftarrow \bvec{p} - \epsilon \nabla U(\bvec{q})/2.$ (3) Reverse the sign of $\bvec{p}$. If $(\bvec{q},\bvec{p})$ is the starting point of the leapfrog dynamics, and $(\bvec{q}', \bvec{p}')$ is the final point, \emph{accept} the move with probability $\min(1,\exp(H(\bvec{p},\bvec{q})-H(\bvec{p}', \bvec{q}')))$  See Algorithm~\ref{alg:rhmc}.
+
+It can be shown that this baseline HMC method has detailed balance with respect to $P(\bvec{p})$, even if $U(\bvec{q})$ is discontinuous.  However, discontinuities mean that large changes in the Hamiltonian may occur, meaning many steps can be rejected.  We propose a modification of the dynamics, namely, \emph{reflective Hamiltonian Monte Carlo} (RHMC), which is also shown in Algorithm \ref{alg:rhmc}.  
+
+The only modification is applied to the position steps: In RHMC, the first intersection of the trajectory with the boundaries of the polytope that contains $\bvec{q}$ must be detected \cite{pakman2014exact, pakman2013auxiliary}.  The position step is only taken up to this boundary, and reflection/refraction occurs, depending on the momentum and change of energy at the boundary.  This process continues until the entire amount of time $\epsilon$ has been simulated.  Note that if there is no boundary in the trajectory to time $\epsilon$, this is equivalent to baseline HMC.  Also note that several boundaries might be visited in one position step.
+
+As with baseline HMC, there are two alternating steps, namely drawing a new momentum
+variable $\bvec{p}$ from $P(\bvec{p})\propto\exp(-K(\bvec{p}))$ and proposing a move
+$(\bvec{p}, \bvec{q})\rightarrow(\bvec{p}', \bvec{q}')$ and accepting or rejecting it with a probability
+determined by a Metropolis-Hastings ratio. We can show that both of
+these steps leave the joint distribution $P$ invariant, and hence
+a Markov chain that also alternates between these steps will also
+leave $P$ invariant.
+
+As it is easy to see, drawing $\bvec{p}$ from $P(\bvec{p})$ will leave $P(\bvec{q}, \bvec{p})$
+invariant, we concentrate on the second step i.e.\ where a move is proposed
+according to the piecewise leapfrog dynamics shown in Alg.~\ref{alg:rhmc}. 
+Firstly, it is clear that these dynamics are time-reversible,
+meaning that if the simulation takes state $(\bvec{q}, \bvec{p})$ to $(\bvec{q}', \bvec{p}')$
+it will also take state $(\bvec{q}', \bvec{p}')$ to $(\bvec{q}, \bvec{p})$. Secondly, we will
+show that these dynamics are volume preserving. Formally, if $\mathcal{D}$
+denotes the leapfrog dynamics, we will show that the absolute value
+of the determinant of the Jacobian of $\mathcal{D}$ is one. These
+two properties together show that the probability density of proposing
+a move from $(\bvec{q}, \bvec{p})$ to $(\bvec{q}', \bvec{p}')$ is the same of that proposing a
+move from $(\bvec{q}', \bvec{p}')$ to $(\bvec{q}, \bvec{p})$. Thus, if the move $(\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')$
+is accepted according to the standard Metropolis-Hastings ratio, $R\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right) = \min(1,\exp(H(\bvec{q}, \bvec{p})-H(\bvec{q}', \bvec{p}'))$,
+then detailed balance will be satisfied. To see this, let $Q$ denote
+the proposal distribution, Then, the usual proof of correctness for Metropolis-Hastings applies, namely that
+
+\vspace{-10pt}
+
+\[
+\frac{P(\bvec{q}, \bvec{p})Q\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right)R\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right)}{P(\bvec{q}', \bvec{p}')Q((\bvec{q}', \bvec{p}')\rightarrow(\bvec{q}, \bvec{p}))R((\bvec{q}', \bvec{p}')\rightarrow(\bvec{q}, \bvec{p}))}=\frac{P(\bvec{q}, \bvec{p})\min(1,\exp(H(\bvec{q}, \bvec{p})-H(\bvec{q}', \bvec{p}'))}{P(\bvec{q}', \bvec{p}')\min(1,\exp(H(\bvec{q}', \bvec{p}')-H(\bvec{q}, \bvec{p}))}=1.
+\]
+
+% Figure refraction for Lemma 1
+\begin{wrapfigure}{R}{0.45\textwidth}
+\vspace{-20pt}
+\centering
+\input figs1/refract1
+%\includegraphics[scale=0.5,trim = 0mm 70mm 0mm 25mm, clip]{tpr/BN3.pdf}
+\vspace{-30pt}
+\caption{Transformation  $\mathcal{T}: \tuple{\bvec{q}, \bvec{p}} \rightarrow \tuple{\bvec{q}', \bvec{p}'}$ 
+described by Lemma~\ref{lemma1} (Refraction).}
+\label{Fig:sec1.BN3}
+\end{wrapfigure}
+
+
+(The final equality is easy to establish, considering the cases where
+$H(\bvec{q}, \bvec{p})\geq H(\bvec{q}', \bvec{p}')$ and $H(\bvec{q}', \bvec{p}')\leq H(\bvec{q}, \bvec{p})$ separately.)  This means that detailed balance holds, and so $P$ is a stationary distribution.
+
+% do we need a formal proof of time-reversibility est-ce que
+
+The major difference in the analysis of RHMC, relative to traditional HMC is that showing
+conservation of volume is more difficult. With standard HMC and leapfrog
+steps, volume conservation is easy to show by observing that each
+part of a leapfrog step is a shear transformation. This is not the
+case with RHMC, and so we must resort to a full analysis
+of the determinant of the Jacobian, as explored in the following section.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\begin{afterpage}{
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\incmargin{1.5em}
+\linesnumbered
+\begin{algorithm}
+\caption{{\sc Baseline \& Reflective HMC Algorithms}%$\big(\bvec{q}_0, U(\cdot), \Phi, L, \epsilon \big)$  
+\label{alg:rhmc}}
+%\SetKwFunction{eliminate}{{\sc Eliminate}}
+\SetKwInOut{Input}{input}
+\SetKwInOut{Output}{output}
+\SetKwInOut{Note}{note}
+\dontprintsemicolon
+
+\Input{
+$\bvec{q}_0$, current sample; $U$, potential function,
+%$\Phi = \{\phi_i\}_i$, set of boundary constraints of the current partition 
+%(that contains $U(\bvec{q}_0)$);\\
+$L$, \# leapfrog steps; $\epsilon$, leapfrog step size
+}
+\Output{next sample}
+\BlankLine
+{
+\Begin{
+
+%:
+$\bvec{q} \eq \bvec{q}_0$; \quad 
+$\bvec{p} \sim \mathcal{N}(0,1)$\\
+
+$H_0 \eq \Vert\bvec{p}\Vert^2 / 2 + U(\bvec{q})$\\
+
+\For {$l = 1$ \emph{\bf to} $L$}{
+
+$\bvec{p} \eq \bvec{p} - \epsilon  \nabla U(\bvec{q}) / 2$ 
+\hspace*{\fill} \# \emph{Half-step evolution of momentum}
+\nllabel{a:first momentum} %......................................
+\\
+
+%//position $\bvec{q}_x$ and time $\epsilon_x$ to reach the first discontinuity\\
+%//(note that $\epsilon_x \in [0, \epsilon]$)  
+%and potential change $\Delta U$:
+
+\vspace{2mm}
+
+\nonl \hspace*{\fill}\# \emph{Full-step evolution of position}:\\
+\vspace{-4mm}
+\If {\textsc{BaselineHMC}}{$\bvec{q} \eq \bvec{q} + \epsilon \bvec{p}$}
+\Else {
+\vspace{-4mm}
+\nonl \hspace*{\fill}\# i.e.\ if \textsc{ReflectiveHMC}:\\
+$t_0 \eq 0$
+\nllabel{a:position evolve begin} %......................................
+\\
+\While {$\big( \tuple{\bvec{x}, t_x, \Delta U , \phi} \eq $
+{\sc FirstDiscontinuity}%\footnotemark
+$(\bvec{q}, \bvec{p}, \epsilon-t_0, U) \big) \neq \emptyset$}
+{
+
+$\bvec{q} \eq \bvec{x}$\\
+%$\bvec{q}^+ \eq \bvec{q} + t_x^+ \bvec{p}$\\
+%$\bvec{q} \eq \bvec{q} + t_x \bvec{p}$\\
+%$\Delta U = U(\bvec{q}^+) - U(\bvec{q})$\\
+
+$t_0 \eq t_0 + t_x$\\
+
+$\tuple{\bvec{p}_\perp, \bvec{p}_\parallel} = $ {\sc decompose}%\footnotemark 
+$(\bvec{p}, \phi)$
+\hspace*{\fill} \# \emph{\footnotesize Perpendicular/ parallel to boundary plane $\phi$}
+\\
+
+\If { $\Vert\bvec{p}_\perp\Vert^2 > 2\Delta U$}
+{
+
+$\bvec{p}_\perp \eq \sqrt{\Vert\bvec{p}_\perp\Vert^2 - 2 \Delta U} \cdot \frac{\bvec{p}_\perp}
+{\Vert\bvec{p}_\perp\Vert}$
+\hspace*{\fill} \# \emph{Refraction}
+}\Else{
+$\bvec{p}_\perp \eq -\bvec{p}_\perp$
+\hspace*{\fill} \# \emph{Reflection}
+} %end else
+
+$\bvec{p} \eq \bvec{p}_\perp + \bvec{p}_\parallel$\\
+
+} %while
+$\bvec{q} \eq \bvec{q} + (\epsilon - t_0) \bvec{p}$
+\nllabel{a:position evolve end} %......................................
+}%end Reflective
+%\\
+$\bvec{p} \eq \bvec{p} - \epsilon  \nabla U(\bvec{q}) / 2$
+\hspace*{\fill} \# \emph{Half-step evolution of momentum}
+
+}%for
+$\bvec{p} \eq - \bvec{p}$\hspace*{\fill} \# \emph{Not required in practice; for reversibility proof}\\
+$H \eq \Vert\bvec{p}\Vert^2/2 + U(\bvec{q})$; \quad  
+$\Delta H \eq H - H_0$\\
+
+{\bf if} $s \sim \mathcal{U}(0, 1) < e^{-\Delta H}$ 
+\Return $\bvec{q}$ 
+{\bf else } \Return $\bvec{q}_0$
+}
+}
+\vspace{2pt}
+\Note{\footnotesize{\sc FirstDiscontinuity}$(\cdot)$ 
+returns $\bvec{x}$, the position of the first intersection of a boundary plain with line segment 
+$[\bvec{q}, \bvec{q} + (\epsilon - t_0) \bvec{p}]$;
+$t_x$, the time it is visited; $\Delta U$, the change in energy at the discontinuity, and $\phi$, the visited partition boundary.  
+If no such point exists, $\emptyset$ is returned.
+}
+\end{algorithm}
+\decmargin{1.5em}
+%%%%%%%%%%%%%%%%%%%%%
+
+\section{Volume Conservation}
+
+
+\subsection{Refraction}
+
+In our first result, we assume without loss of generality, that there is a boundary located at the hyperplane $q_1=c$.  This Lemma shows that, in the refractive case, volume is conserved. The setting is visualized in Figure \ref{Fig:sec1.BN3}.
+
+\begin{lemma} 
+\label{lemma1}
+Let $\mathcal{T}: \tuple{\bvec{q}, \bvec{p}} \rightarrow \tuple{\bvec{q}', \bvec{p}'}$ be a transformation in $\mathbb{R}^n$
+that takes a unit mass located at $\bvec{q} := (q_1, \ldots, q_n)$ and moves it with constant momentum $\bvec{p} := (p_1, \ldots, p_n)$ till it reaches a plane $q_1 = c$ (at some point $\bvec{x} := (c, x_2, \ldots, x_n)$ where 
+$c$ is a constant).
+Subsequently the momentum is changed to 
+$
+\bvec{p}' = \left(\sqrt{p_1^2 - 2 \Delta U(\bvec{x})}, p_2, \ldots, p_n \right)
+$
+(where $\Delta U(\cdot)$ is a function of $\bvec{x}$ s.t.\ $p_1^2 > 2 \Delta U(\bvec{x})$).
+The move is carried on for the total time period $\tau$ till it ends in $\bvec{q}'$. 
+For all $n \in \mathbb{N}$, $\mathcal{T}$ satisfies the volume preservation property.
+\end{lemma}
+
+\begin{proof}
+
+Since for $i>1$, the momentum is not affected by the collision,
+$
+q'_{i}=q_{i}+\tau\cdot p_{i}
+$
+and
+$
+p'_{i} =p_{i}
+$.  Thus,
+%   
+\[
+\forall j \in \{2, \ldots, n\} s.t.\ j \neq i,
+\qquad
+\frac{\partial q'_{i}}
+{\partial q_{j}}=
+\frac{\partial q'_{i}}
+{\partial p_{j}}=
+\frac{\partial p'_{i}}
+{\partial q_{j}}=
+\frac{\partial p'_{i}}
+{\partial p_{j}}=0.
+\]
+%
+Therefore, if we explicitly write out the Jacobian of $\mathcal{T}$, it is
+\begin{multline}
+\label{e:bozboz}
+|J|=\left|\begin{array}{cccccc}
+%1
+\frac{\partial q'_{1}}{\partial q_{1}} & \frac{\partial q'_{1}}{\partial p_{1}} & \cdots & \frac{\partial q'_{1}}{\partial p_{k-1}} & \frac{\partial q'_{1}}{\partial q_{k}} & \frac{\partial q'_{1}}{\partial p_{k}}\\
+%2
+\frac{\partial p'_{1}}{\partial q_{1}} & \frac{\partial p'_{1}}{\partial p_{1}} & \cdots & \frac{\partial p'_{1}}{\partial p_{k-1}} & \frac{\partial p'_{1}}{\partial q_{k}} & \frac{\partial p'_{1}}{\partial p_{k}}\\
+%3
+\frac{\partial q'_{2}}{\partial q_{1}} & \frac{\partial q'_{2}}{\partial p_{1}} & \cdots & \frac{\partial q'_{2}}{\partial p_{k-1}} & \frac{\partial q'_{2}}{\partial q_{k}} & \frac{\partial q'_{2}}{\partial p_{k}}\\
+%
+\vdots &  & \ddots & \vdots &  & \vdots\\
+%
+\frac{\partial p'_{k-1}}{\partial q_{1}} & \frac{\partial p'_{k-1}}{\partial p_{1}} & \cdots & \frac{\partial p'_{k-1}}{\partial p_{k-1}} & \frac{\partial p'_{k-1}}{\partial q_{k}} & \frac{\partial p'_{k-1}}{\partial p_{k}}\\
+%
+\frac{\partial q'_{k}}{\partial q_{1}} & \frac{\partial q'_{k}}{\partial p_{1}} & \cdots & \frac{\partial q'_{k}}{\partial p_{k-1}} & \frac{\partial q'_{k}}{\partial q_{k}} & \frac{\partial q'_{k}}{\partial p_{k}}\\
+\frac{\partial p'_{k}}{\partial q_{1}} & \frac{\partial p'_{k}}{\partial p_{1}} & \cdots & \frac{\partial p'_{k}}{\partial p_{k-1}} & \frac{\partial p'_{k}}{\partial q_{k}} & \frac{\partial p'_{k}}{\partial p_{k}}
+\end{array}\right|=
+%
+%
+\left|\begin{array}{cccccc}
+%1
+\frac{\partial q'_{1}}{\partial q_{1}} & \frac{\partial q'_{1}}{\partial p_{1}} & \cdots & \frac{\partial q'_{1}}{\partial p_{k-1}} & \frac{\partial q'_{1}}{\partial q_{k}} & \frac{\partial q'_{1}}{\partial p_{k}}\\
+%2
+\frac{\partial p'_{1}}{\partial q_{1}} & \frac{\partial p'_{1}}{\partial p_{1}} & \cdots & \frac{\partial p'_{1}}{\partial p_{k-1}} & \frac{\partial p'_{1}}{\partial q_{k}} & \frac{\partial p'_{1}}{\partial p_{k}}\\
+%3
+0 & 0 & \cdots & \frac{\partial q'_{2}}{\partial p_{k-1}} & \frac{\partial q'_{2}}{\partial q_{k}} & \frac{\partial q'_{2}}{\partial p_{k}}\\
+%
+\vdots &  & \ddots & \vdots &  & \vdots\\
+%
+0 & 0 & \cdots & 1 & \frac{\partial p'_{k-1}}{\partial q_{k}} & \frac{\partial p'_{k-1}}{\partial p_{k}}\\
+%
+0 & 0 & \cdots & 0 & 1 & \frac{\partial q'_{k}}{\partial p_{k}}\\
+0 & 0 & \cdots & 0 & 0 & 1
+\end{array}\right| 
+\end{multline}
+
+Now, using standard properties of the determinant, we have that
+$
+\vert J \vert = 
+\left|\begin{array}{cc}
+\frac{\partial q'_{1}}{\partial q_{1}} & \frac{\partial q'_{1}}{\partial p_{1}} \\
+\frac{\partial p'_{1}}{\partial q_{1}} & \frac{\partial p'_{1}}{\partial p_{1}} \\
+\end{array}\right|.
+$
+
+We will now explicitly calculate these four derivatives.  Due to the significance of the result, we carry out the computations in detail. 
+Nonetheless, as this is a largely mechanical process, for brevity, we do not comment on the derivation.   
+
+Let $t_1$ be the time to reach $\bvec{x}$ and $t_2$ be the period between reaching $\bvec{x}$ and the last point $\bvec{q}'$.  Then:
+\vspace{-10pt}
+\begin{tabular}{p{3cm}p{4cm}p{5.8cm}}
+{
+\begin{align}\label{e:sag1}
+&
+t_1 \overset{\text{def}}= \frac{c - q_{1}}{p_{1}}
+\end{align} }
+&{
+\begin{align}\label{e:sag0}
+\bvec{x} = \bvec{q} + t_1 \bvec{p}
+%=\bvec{q} + \frac{c-q_1}{p_1}\bvec{p} 
+\end{align} 
+}
+&{
+\begin{align}\label{e:sag2}
+t_{2}
+\overset{\text{def}}=
+\tau-t_{1}=\tau+\frac{q_{1} - c}{p_{1}}
+\end{align} 
+}
+\end{tabular}
+\vspace{-12pt}
+\\
+\begin{tabular}{p{3cm}p{4cm}p{5.8cm}}
+{\begin{align}\label{e:sag3}
+&
+q'_{1}=c + p'_{1}\cdot t_{2}
+\end{align} }
+&
+{\begin{align}\label{e:sag4}
+p'_1 \overset{\text{def}}= \sqrt{p_1^2 - 2 \Delta U(\bvec{x})}
+\end{align} }
+&
+{\begin{align}\label{e:sag5}
+\frac{\partial t_2}{\partial q_1} 
+\overset{\text{by (\ref{e:sag2})}}=
+\frac{1}{p_{1}} 
+\end{align} }
+\end{tabular}
+\vspace{-12pt}
+\\
+\begin{align}\label{e:gorbe1}
+\frac{\partial q'_1}{\partial q_1} 
+=
+\frac{\partial q'_1}{\partial p'_1} \cdot \frac{\partial p'_1}{\partial q_1}
++
+\frac{\partial q'_1}{\partial t_2} \cdot \frac{\partial t_2}{\partial q_1}
+\overset{\text{(\ref{e:sag3} \& \ref{e:sag5})}}
+=
+t_2 \cdot \frac{\partial p'_1}{\partial q_1}
++
+p'_1 \cdot \frac{1}{p_1}
+\end{align}
+\begin{align}\label{e:gorbe2}
+\frac{\partial q'_1}{\partial p_1} 
+=
+\frac{\partial q'_1}{\partial p'_1} \cdot \frac{\partial p'_1}{\partial p_1}
++
+\frac{\partial q'_1}{\partial t_2} \cdot \frac{\partial t_2}{\partial p_1}
+\overset{\text{(\ref{e:sag2} \& \ref{e:sag3})}}
+=
+%
+t_2 \cdot \frac{\partial p'_1}{\partial p_1}
++
+p'_1 \cdot \frac{c-q_1}{p_1^2}
+\end{align}
+%
+\begin{align}\label{e:fok1}
+\frac{\partial p'_1}{\partial p_1}
+\overset{\text{(\ref{e:sag4})}}=
+\frac{1}{2\sqrt{p_1^2 - 2 \Delta U(\bvec{x})}}
+\cdot
+\frac{\partial\left(p_1^2 - 2 \Delta U(\bvec{x})\right)}{\partial p_1}
+=
+\frac{p_1 -  \partial{\Delta U(\bvec{x})} / \partial p_1}{p'_1}
+\end{align}
+%
+\begin{align}\label{e:fok2}
+\frac{\partial p'_1}{\partial q_1}
+=
+\frac{1}{2\sqrt{p_1^2 - 2 \Delta U(\bvec{x})}}
+\cdot
+\frac{\partial\left(p_1^2 - 2 \Delta U(\bvec{x})\right)}{\partial q_1}
+=
+\frac{1}{p'_1} \cdot \frac{-\partial{\Delta U(\bvec{x})}}{\partial q_1}
+\end{align}
+%
+\begin{align}\label{e:zoro1}
+\frac{\partial \bvec{x}}{\partial{p_1}}
+\overset{\text{(\ref{e:sag1}, \ref{e:sag0})}}
+=
+\frac{
+\partial \left(\bvec{q} + \frac{c-q_1}{p_1}\bvec{p} \right)
+}
+{\partial p_1} 
+=
+\frac{
+\partial \bvec{q}}
+{\partial{p_1}}
+ + 
+(c-q_1)
+\cdot 
+\frac{
+\partial(\bvec{p}/p_1) 
+}{\partial{p_1}}
+=
+(c - q_1)\frac{-1}{p_1^2}
+\cdot
+(0, p_2, p_3, \ldots, p_n)
+\end{align}
+%
+\begin{align}\label{e:zoro2}
+\frac{\partial \bvec{x}}{\partial{q_1}}
+\overset{\text{(\ref{e:sag1}, \ref{e:sag0})}}
+=
+\frac{
+\partial \bvec{q}}
+{\partial{q_1}}
+ + 
+\frac
+{\bvec{p}}
+{p_1}
+\cdot
+\frac
+{\partial(c-q_1)}
+{\partial q_1}
+=
+\frac{\bvec{q}}{q_1}
+-
+\frac{\bvec{p}}{p_1}
+=
+(1, 0, \ldots, 0 ) - (1, \frac{p_2}{p_1}, \ldots, \frac{p_n}{p_1})
+= \frac{-1}{p_1}(0, p_2, \ldots, p_n)
+\end{align}
+
+Substituting the appropriate terms into $|J|=|\frac{\partial q'_{1}}{\partial q_{1}} \frac{\partial p'_{1}}{\partial p_{1}} - \frac{\partial p'_{1}}{\partial q_{1}} \frac{\partial q'_{1}}{\partial p_{1}}|$, we get that
+
+\begin{align*}\label{e:zarrafe1}
+|J|
+&\overset{\text{(\ref{e:bozboz})}}
+=
+\frac{\partial q'_1}{\partial q_1} \cdot \frac{\partial p'_1}{\partial p_1}
+-
+\frac{\partial q'_1}{\partial p_1} \cdot \frac{\partial p'_1}{\partial q_1}
+\overset{\text{(\ref{e:gorbe1} \& \ref{e:gorbe2})}}
+=
+\left(
+t_2 \frac{\partial p'_1}{\partial q_1}
++
+\frac{p'_1}{p_1}
+\right)
+\cdot 
+\frac{\partial p'_1}{\partial p_1}
+-
+\left(
+t_2 \frac{\partial p'_1}{\partial p_1}
++
+p'_1 \frac{c-q_1}{p_1^2}
+\right)
+\cdot \frac{\partial p'_1}{\partial q_1}\\
+&= 
+\frac{p'_1}{p_1} 
+\left(
+\frac{\partial p'_1}{\partial p_1} 
++
+\frac{q_1 - c}{p_1} 
+\cdot
+\frac{\partial p'_1}{\partial q_1}
+\right)
+\overset{\text{(\ref{e:fok1} \& \ref{e:fok2})}}
+=
+\frac{1}{p_1} 
+\left(
+p_1 -
+\frac{\partial \Delta U(\bvec{x})}{\partial p_1}%...
+-
+\frac{q_1 - c}{p_1} 
+\cdot
+\frac{\partial{\Delta U(\bvec{x})}}{\partial q_1}%...
+\right)
+\\
+&=
+1 - 
+\frac{1}{p_1} 
+\left(
+\frac{\partial \Delta U(\bvec{x})}{\partial \bvec{x}}
+\cdot
+\frac{\partial \bvec{x}}{\partial p_1}%...
++
+\frac{q_1 - c}{p_1} 
+\cdot
+\frac{\partial{\Delta U(\bvec{x})}}
+{\partial \bvec{x}}
+\cdot
+\frac{\partial \bvec{x}}
+{\partial q_1}%...
+\right)
+\\
+&\overset{\text{(\ref{e:zoro1} \& \ref{e:zoro2})}}
+=
+1 - 
+\frac{1}{p_1} \cdot
+\frac{\partial \Delta U(\bvec{x})}{\partial \bvec{x}} 
+\left(
+\frac{q_1 - c}{p_1^2}
+\cdot
+(0, p_2, p_3, \ldots, p_n)
++
+\frac{q_1 - c}{p_1} 
+\cdot
+\frac{-1}{p_1}(0, p_2, \ldots, p_n)
+\right)
+= 1.
+\end{align*}
+\end{proof}    
+
+
+
+
+\subsection{Reflection}
+
+Now, we turn to the reflective case, and again show that volume is conserved.  Again, we assume without loss of generality that there is a boundary located at the hyperplane $q_1=c$.
+
+
+%%%%%%%%%
+
+\begin{lemma} 
+\label{lemma2}
+Let $\mathcal{T}: \tuple{\bvec{q}, \bvec{p}} \rightarrow \tuple{\bvec{q}', \bvec{p}'}$ be a transformation in $\mathbb{R}^n$
+that takes a unit mass located at $\bvec{q} := (q_1, \ldots, q_n)$ and moves it with the constant momentum $\bvec{p} := (p_1, \ldots, p_n)$ till it reaches a plane $q_1 = c$ (at some point $\bvec{x} := (c, x_2, \ldots, x_n)$ where 
+$c$ is a constant).
+Subsequently the mass is bounced back (reflected) with momentum  
+$
+\bvec{p}' = \left( -p_1, p_2, \ldots, p_n \right)
+$
+The move is carried on for a total time period $\tau$ till it ends in $\bvec{q}'$. 
+For all $n \in \mathbb{N}$, $\mathcal{T}$ satisfies the volume preservation property.
+\end{lemma}
+
+\begin{proof}
+Similar to Lemma~\ref{lemma1},
+for $i>1$,   
+$
+q'_{i}=q_{i}+\tau\cdot p_{i}
+$
+and
+$
+p'_{i} =p_{i}
+$.
+Therefore, for any
+$j \in \{2, \ldots, n\}$ s.t.\ $j \neq i$,
+$\quad
+\frac{\partial q'_{i}}
+{\partial q_{j}}=
+\frac{\partial q'_{i}}
+{\partial p_{j}}=
+\frac{\partial p'_{i}}
+{\partial q_{j}}=
+\frac{\partial p'_{i}}
+{\partial p_{j}}=0
+$.
+Consequently, by equation~(\ref{e:bozboz}), 
+and since $p'_1 = -p_1$,  
+\begin{equation}\label{e:jiji}
+|J| =
+\left|\begin{array}{cc}
+\frac{\partial q'_{1}}{\partial q_{1}} & \frac{\partial q'_{1}}{\partial p_{1}} \\
+\frac{\partial p'_{1}}{\partial q_{1}} & \frac{\partial p'_{1}}{\partial p_{1}} \\
+\end{array}\right|
+=
+\left|\begin{array}{cc}
+\frac{\partial q'_{1}}{\partial q_{1}} & \frac{\partial q'_{1}}{\partial p_{1}} \\
+0 & -1 \\
+\end{array}\right| 
+= 
+\frac{-\partial q'_{1}}{\partial q_{1}}
+\end{equation}
+%
+As before, let $t_1$ be the time to reach $\bvec{x}$ and $t_2$ be the period between reaching $\bvec{x}$ and the last point $\bvec{q}'$. That is,
+$t_1 \overset{\text{def}}= \frac{c - q_{1}}{p_{1}}$
+and
+$
+t_2 \overset{\text{def}}=\tau - t_1
+$.
+It follows that
+$q'_1 \overset{\text{def}}= c + p'_1 \cdot t_2$ 
+%\overset{\text{(\ref{e:shab2})}}= c - p_1 \cdot (\tau - t_1) 
+%\overset{\text{(\ref{e:shab1})}}= c - p_1 \cdot (\tau - \frac{c - q_{1}}{p_{1}})
+is equal to $2c - \tau p_1 - q_{1}$.
+Hence, $|J| = 1$.
+\end{proof}
+
+\subsection{Reflective Leapfrog Dynamics}
+
+% be precise later
+\begin{theorem}
+In RHMC (Algorithm \ref{alg:rhmc}) for sampling from a continuous and piecewise distribution $P$ which has affine partitioning boundaries, leapfrog simulation preserves volume in $(\bvec{q}, \bvec{p})$ space.
+\end{theorem}
+%
+\begin{proof}
+We split the algorithm into several atomic transformations $\mathcal{T}_i$.  Each transformation is either (a) a momentum step, (b) a full position step with no reflection/refraction or (c) a full or partial position step where exactly one reflection or refraction occurs. 
+
+To prove that the total algorithm preserves volume,
+it is sufficient to show that the volume is preserved under each $\mathcal{T}_i$ 
+(i.e.\ $|J_{\mathcal{T}_i}(\bvec{q}, \bvec{p})| = 1$) since:
+\begin{equation*}
+\left|J_{\mathcal{T}_1 o \mathcal{T}_2 o \cdots o \mathcal{T}_m} \right| = 
+\left|J_{\mathcal{T}_1}  \right| \cdot 
+\left|J_{\mathcal{T}_2}  \right| \cdots 
+\left|J_{\mathcal{T}_m} \right| 
+\end{equation*} 
+Transformations of kind (a) and (b) are shear mappings 
+and therefore they preserve the volume \cite{neal2011mcmc}.  
+%Similarly, if a position step does not encounter a boundary, it is also a shear mapping, and preserve volume.  
+Now consider a (full or partial) position step where a single refraction occurs. 
+If the reflective plane is in form $q_1 = c$, by lemma~\ref{lemma1}, the volume preservation property holds.
+Otherwise, as long as the reflective plane is affine, via a rotation of basis vectors, the problem is reduced to the former case. Since volume is conserved under rotation, in this case the volume is also conserved.
+With similar reasoning, by lemma~\ref{lemma2}, reflection on a affine reflective boundary preserves volume. Thus, since all component transformations of RHMC leapfrog simulation preserve volume, the proof is complete.  
+\end{proof}
+Along with the fact that the leapfrog dynamics are time-reversible, this shows that the algorithm satisfies detailed balance, and so has the correct stationary distribution.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}[t!]
+\label{fig:results}
+\vspace{-1mm}
+\begin{center}
+\begin{tabular}{cc}
+   \hspace{-5mm} \includegraphics[width=0.49\textwidth,height=0.35\textwidth]{plots1/expectationVsamples_dim2.pdf} 
+& \hspace{-3mm} \includegraphics[width=0.49\textwidth,height=0.35\textwidth]{plots1/expectationVtime_dim2.pdf} 
+\vspace{-1.5mm}
+\\
+   \hspace{-5mm} \footnotesize(a) 
+& \hspace{-4mm} \footnotesize(d) 
+\\
+\hspace{-5mm} \includegraphics[width=0.49\textwidth,height=0.35\textwidth]{plots1/expectationVsamples_dim10.pdf} 
+& \hspace{-3mm} \includegraphics[width=0.49\textwidth,height=0.35\textwidth]{plots1/expectationVtime_dim10.pdf} 
+\vspace{-1.5mm}
+\\
+   \hspace{-5mm} \footnotesize(b) 
+& \hspace{-4mm} \footnotesize(e) 
+\\
+\hspace{-5mm} \includegraphics[width=0.49\textwidth,height=0.35\textwidth]{plots1/expectationVsamples_dim50.pdf} 
+& \hspace{-3mm} \includegraphics[width=0.49\textwidth,height=0.35\textwidth]{plots1/expectationVtime_dim50.pdf} 
+\vspace{-1.5mm}
+\\
+\hspace{-5mm} \footnotesize(c) 
+& \hspace{-4mm} \footnotesize(f) 
+\\
+\multicolumn{2}{c}{}
+\end{tabular}
+\end{center}
+\vspace{-8mm}
+\caption{\footnotesize
+Error (worst mean absolute error per dimension) versus (a-c) iterations and (e-f) time (ms). 
+} 
+\end{figure*}
+
+
+\section{Experiment} \label{sect:example}
+Compared to baseline HMC, we expect that RHMC will simulate Hamiltonian dynamics more accurately and therefore leads to fewer rejected samples.  On the other hand, this comes at the expense of slower leapfrog position steps since intersections, reflections and refractions must be computed. To test the trade off we    
+compare the RHMC to baseline HMC \cite{neal2011mcmc} and tuned Metroplis-Hastings (MH) with a simple isotropic Normal proposal distribution.  MH is automatically tuned after \cite{roberts1997weak} by testing 100 equidistant proposal variances in interval $(0, 1]$ and accepting a variance for which the acceptance rate is closest to 0.24.
+The baseline HMC and RHMC number of steps $L$ and step size $\epsilon$ are chosen to be 100 and 0.1 respectively. (Many other choices are in the Appendix.) While HMC performance is highly standard to these parameters \cite{homan2014no} RHMC is consistently faster.
+
+The comparison takes place on a heavy tail piecewise model with (non-normalized) negative log probability  
+\begin{equation}
+U(\bvec{q}) =
+\begin{cases}
+\case{\Vert \bvec{q} \Vert_\infty \leq 3}{\sqrt{\bvec{q}^\top A \; \bvec{q}}}\\
+\case{3 < \Vert \bvec{q} \Vert_\infty \leq 6 }{1 + \sqrt{\bvec{q}^\top A \; \bvec{q}}}\\
+\otherwise{+ \infty,}
+\end{cases}
+\label{eq:Uq}
+\end{equation}
+where $A$ is a positive definite matrix.  We carry out the experiment on three choices of (position space) dimensionalites,  $n = 2, 10$ and $50$.
+
+
+Due to the symmetry of the model, the ground truth expected value of $\bvec{q}$ is known to be $\bvec{0}$.
+Therefore, the absolute error of the expected value (estimated by a chain $\bvec{q}^{(1)}, \ldots, \bvec{q}^{(k)}$ of MCMC samples) in each dimension $d = 1, \ldots, n$ is 
+the absolute value of the mean of $d$-th element of the sample vectors.
+The worst mean absolute error (WMAE) over all dimensions is taken as the error measurement of the chain.
+\begin{equation}
+\textsc{WMAE} \left( \bvec{q}^{(1)}, \ldots, \bvec{q}^{(k)} \right) = \frac{1}{k}
+\max_{d=1, \ldots n} 
+\left|\sum_{s=1}^k {q_d}^{s} \right|
+\label{eq:WMAE}
+\end{equation}
+For each algorithm, 20 Markov chains are run and the mean WMAE and 99\% confidence intervals (as error bars) versus the number of iterations (i.e. Markov chain sizes) are time (milliseconds) are depicted in 
+figure~2. All algorithms are implemented in java and run on a single thread of a 3.40GHz CPU.
+
+For each of the 20 repetitions, some random starting point is chosen uniformly and used for all three of the algorithms.  We use a diagonal matrix for $A$ where, for each repetition, each entry on the main diagonal is either $\exp(-5)$ or $\exp(5)$ with equal probabilities.
+
+As the results show, even in low dimensions, the extra cost of the position step is more or less compensated by its higher effective sample size but as the dimensionality increases, the RHMC significantly outperforms both baseline HMC and tuned MH.
+
+\section{Conclusion}
+
+We have presented a modification of the leapfrog dynamics for Hamiltonian Monte Carlo for piecewise smooth energy functions with affine boundaries (i.e. each region is a polytope), inspired by physical systems.  Though traditional Hamiltonian Monte Carlo can in principle be used on such functions, the fact that the Hamiltonian will often be dramatically changed by the dynamics can result in a very low acceptance ratio, particularly in high dimensions.  By better preserving the Hamiltonian, \emph{reflective Hamiltonian Monte Carlo} (RHMC) accepts more moves and thus has a higher effective sample size, leading to much more efficient probabilistic inference.  To use this method, one must be able to detect the first intersection of a position trajectory with polytope boundaries.
+
+
+\subsubsection*{Acknowledgements}
+NICTA is funded by the Australian Government through the Department of Communications and the Australian Research Council through the ICT Centre of Excellence Program.
+
+
+
+
+
+\bibliographystyle{plain}
+\bibliography{reflectiveHMC}
+
+
+
+
+
+
+
+
+
+
+
+
+\end{document}

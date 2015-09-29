@@ -1,0 +1,77 @@
+\begin{thebibliography}{10}
+
+\bibitem{afshar2015linear}
+Hadi~Mohasel Afshar, Scott Sanner, and Ehsan Abbasnejad.
+\newblock Linear-time gibbs sampling in piecewise graphical models.
+\newblock In {\em Association for the Advancement of Artificial Intelligence},
+  pages 665--673, 2015.
+
+\bibitem{brooks2011handbook}
+Steve Brooks, Andrew Gelman, Galin Jones, and Xiao-Li Meng.
+\newblock {\em Handbook of Markov Chain Monte Carlo}.
+\newblock CRC press, 2011.
+
+\bibitem{buchdahl1993introduction}
+Hans~Adolph Buchdahl.
+\newblock {\em An introduction to Hamiltonian optics}.
+\newblock Courier Corporation, 1993.
+
+\bibitem{duane1987hybrid}
+Simon Duane, Anthony~D Kennedy, Brian~J Pendleton, and Duncan Roweth.
+\newblock Hybrid monte carlo.
+\newblock {\em Physics letters B}, 195(2):216--222, 1987.
+
+\bibitem{glen2004computing}
+Andrew~G Glen, Lawrence~M Leemis, and John~H Drew.
+\newblock Computing the distribution of the product of two continuous random
+  variables.
+\newblock {\em Computational statistics \& data analysis}, 44(3):451--464,
+  2004.
+
+\bibitem{greenwood1988principles}
+Donald~T Greenwood.
+\newblock {\em Principles of dynamics}.
+\newblock Prentice-Hall Englewood Cliffs, NJ, 1988.
+
+\bibitem{homan2014no}
+Matthew~D Homan and Andrew Gelman.
+\newblock The no-u-turn sampler: Adaptively setting path lengths in hamiltonian
+  monte carlo.
+\newblock {\em The Journal of Machine Learning Research}, 15(1):1593--1623,
+  2014.
+
+\bibitem{lunn2009bugs}
+David Lunn, David Spiegelhalter, Andrew Thomas, and Nicky Best.
+\newblock The bugs project: evolution, critique and future directions.
+\newblock {\em Statistics in medicine}, 28(25):3049--3067, 2009.
+
+\bibitem{neal2011mcmc}
+Radford~M Neal.
+\newblock Mcmc using hamiltonian dynamics.
+\newblock {\em Handbook of Markov Chain Monte Carlo}, 2, 2011.
+
+\bibitem{pakman2013auxiliary}
+Ari Pakman and Liam Paninski.
+\newblock Auxiliary-variable exact hamiltonian monte carlo samplers for binary
+  distributions.
+\newblock In {\em Advances in Neural Information Processing Systems}, pages
+  2490--2498, 2013.
+
+\bibitem{pakman2014exact}
+Ari Pakman and Liam Paninski.
+\newblock Exact hamiltonian monte carlo for truncated multivariate gaussians.
+\newblock {\em Journal of Computational and Graphical Statistics},
+  23(2):518--542, 2014.
+
+\bibitem{roberts1997weak}
+Gareth~O Roberts, Andrew Gelman, Walter~R Gilks, et~al.
+\newblock Weak convergence and optimal scaling of random walk metropolis
+  algorithms.
+\newblock {\em The annals of applied probability}, 7(1):110--120, 1997.
+
+\bibitem{stan-manual:2014}
+{Stan Development Team}.
+\newblock {\em Stan Modeling Language Users Guide and Reference Manual, Version
+  2.5.0}, 2014.
+
+\end{thebibliography}
