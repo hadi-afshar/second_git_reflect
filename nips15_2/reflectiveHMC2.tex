@@ -138,7 +138,7 @@ In physical systems that follow Hamiltonian dynamics \cite{greenwood1988principl
 
 % THIS WOULD BE A GREAT PLACE FOR CARTOON FIGURES
 
-Recently, Pakman et al. \cite{pakman2014exact, pakman2013auxiliary} proposed methods for HMC-based sampling from piecewise Gaussian distributions by exactly solving the Hamiltonian equations, and accounting for what we refer to as refraction and reflection above.  However, since Hamiltonian equations of motion can rarely be solved exactly, the applications of this method are restricted to distributions whose log-density is piecewise quadratic.
+Recently, Pakman and Paninski \cite{pakman2014exact, pakman2013auxiliary} proposed methods for HMC-based sampling from piecewise Gaussian distributions by exactly solving the Hamiltonian equations, and accounting for what we refer to as refraction and reflection above.  However, since Hamiltonian equations of motion can rarely be solved exactly, the applications of this method are restricted to distributions whose log-density is piecewise quadratic.
 
 % cite can't solve Hamitonian [be precise]
 
@@ -189,7 +189,7 @@ for some period of time $\epsilon$, and (3) reversing the final value $\bvec{p}$
 \end{center}
 \vspace{-8mm}
 \caption{\footnotesize
-Example trajectories of baseline and reflective HMC. (a) Contours of the target distribution in two dimensions, as defined in Eq. \ref{eq:Uq}. (b) Trajectories of the rejected (red crosses) and accepted (blue dots) proposals using baseline HMC. (c) The same with RHMC. Both use leapfrog parameters $L=25$ and $\epsilon=0.1$ In RHMC, the trajectory reflects or refracts on the boundaries of the internal and external polytope boundaries and thus has far fewer rejected samples than HMC, leading to faster mixing in practice.} 
+Example trajectories of baseline and reflective HMC. (a) Contours of the target distribution in two dimensions, as defined in Eq. \ref{eq:Uq}. (b) Trajectories of the rejected (red crosses) and accepted (blue dots) proposals using baseline HMC. (c) The same with RHMC. Both use leapfrog parameters $L=25$ and $\epsilon=0.1$ In RHMC, the trajectory reflects or refracts on the boundaries of the internal and external polytope boundaries and thus has far fewer rejected samples than HMC, leading to faster mixing in practice. (More examples in supplementary material.)} 
 \label{fig:mom}
 \vspace{-10pt}
 \end{figure*}
@@ -236,7 +236,7 @@ Take a potential function $U(\bvec{q})$ which is differentiable in all points ex
 Let $\Delta U$ be the (signed) difference in potential energy on the two sides of the discontinuity.   If $\Vert \bvec{p}_\perp \Vert^2 > 2\Delta U$ then $\bvec{p}_\perp$ is instantaneously replaced by $\bvec{p}'_\perp := \sqrt{ \Vert \bvec{p}_\perp \Vert^2 - 2 \Delta U} \cdot \frac{\bvec{p}_\perp}{\Vert \bvec{p}_\perp \Vert}$. 
 That is, the discontinuity is passed, but the momentum is changed in the direction perpendicular to the boundary (refraction).  (If $\Delta U$ is positive, the momentum will decrease, and if it is negative, the momentum will increase.)  On the other hand, if $\Vert \bvec{p}_\perp \Vert^2 \leq 2\Delta U$, then $\bvec{p}_\perp$ is instantaneously replaced by $-\bvec{p}_\perp$.  That is, if the particle's momentum is insufficient to climb the potential boundary, it bounces back by reversing the momentum component which is perpendicular to the boundary.
 
-Pakman and Paninski \cite{pakman2014exact, pakman2013auxiliary} present an algorithm to exactly solve these dynamics for quadratic $U$.  However, for non-quadratic $U$, the Hamiltonian dynamics rarely have a closed-form solution, and one must resort to numerical integration, the most succesful method for which is known as the \emph{leapfrog} dynamics.
+Pakman and Paninski \cite{pakman2014exact, pakman2013auxiliary} present an algorithm to exactly solve these dynamics for quadratic $U$.  However, for non-quadratic $U$, the Hamiltonian dynamics rarely have a closed-form solution, and one must resort to numerical integration, the most successful method for which is known as the \emph{leapfrog} dynamics.
 
 
 
@@ -866,13 +866,14 @@ Along with the fact that the leapfrog dynamics are time-reversible, this shows t
 \end{center}
 \vspace{-8mm}
 \caption{\footnotesize
-Error (worst mean absolute error per dimension) versus (a-c) iterations and (e-f) time (ms). 
+Error (worst mean absolute error per dimension) versus (a-c) iterations and (e-f) time (ms). Tuned.HM is Metropolis Hastings with a tuned isotropic Gaussian proposal distribution. (Many more examples in supplementary material.)
 } 
+\vspace{-10pt}
 \end{figure*}
 
 
 \section{Experiment} \label{sect:example}
-Compared to baseline HMC, we expect that RHMC will simulate Hamiltonian dynamics more accurately and therefore leads to fewer rejected samples.  On the other hand, this comes at the expense of slower leapfrog position steps since intersections, reflections and refractions must be computed. To test the trade off we    
+Compared to baseline HMC, we expect that RHMC will simulate Hamiltonian dynamics more accurately and therefore leads to fewer rejected samples.  On the other hand, this comes at the expense of slower leapfrog position steps since intersections, reflections and refractions must be computed. To test the trade off, we    
 compare the RHMC to baseline HMC \cite{neal2011mcmc} and tuned Metroplis-Hastings (MH) with a simple isotropic Normal proposal distribution.  MH is automatically tuned after \cite{roberts1997weak} by testing 100 equidistant proposal variances in interval $(0, 1]$ and accepting a variance for which the acceptance rate is closest to 0.24.
 The baseline HMC and RHMC number of steps $L$ and step size $\epsilon$ are chosen to be 100 and 0.1 respectively. (Many other choices are in the Appendix.) While HMC performance is highly standard to these parameters \cite{homan2014no} RHMC is consistently faster.
 
@@ -907,6 +908,7 @@ For each of the 20 repetitions, some random starting point is chosen uniformly a
 As the results show, even in low dimensions, the extra cost of the position step is more or less compensated by its higher effective sample size but as the dimensionality increases, the RHMC significantly outperforms both baseline HMC and tuned MH.
 
 \section{Conclusion}
+\vspace{-10pt}
 
 We have presented a modification of the leapfrog dynamics for Hamiltonian Monte Carlo for piecewise smooth energy functions with affine boundaries (i.e. each region is a polytope), inspired by physical systems.  Though traditional Hamiltonian Monte Carlo can in principle be used on such functions, the fact that the Hamiltonian will often be dramatically changed by the dynamics can result in a very low acceptance ratio, particularly in high dimensions.  By better preserving the Hamiltonian, \emph{reflective Hamiltonian Monte Carlo} (RHMC) accepts more moves and thus has a higher effective sample size, leading to much more efficient probabilistic inference.  To use this method, one must be able to detect the first intersection of a position trajectory with polytope boundaries.
 
