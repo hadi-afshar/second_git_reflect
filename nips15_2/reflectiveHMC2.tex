@@ -7,6 +7,7 @@
 
 \usepackage{tikz} %for Dia
 \usepackage{wrapfig}
+\usepackage{array}%for matrix column width fixing
 
 %\documentstyle[nips14submit_09,times,art10]{article} % For LaTeX 2.09
 
@@ -277,9 +278,9 @@ the proposal distribution, Then, the usual proof of correctness for Metropolis-H
 
 \vspace{-10pt}
 
-\[
-\frac{P(\bvec{q}, \bvec{p})Q\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right)R\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right)}{P(\bvec{q}', \bvec{p}')Q((\bvec{q}', \bvec{p}')\rightarrow(\bvec{q}, \bvec{p}))R((\bvec{q}', \bvec{p}')\rightarrow(\bvec{q}, \bvec{p}))}=\frac{P(\bvec{q}, \bvec{p})\min(1,\exp(H(\bvec{q}, \bvec{p})-H(\bvec{q}', \bvec{p}'))}{P(\bvec{q}', \bvec{p}')\min(1,\exp(H(\bvec{q}', \bvec{p}')-H(\bvec{q}, \bvec{p}))}=1.
-\]
+\begin{multline}
+\frac{P(\bvec{q}, \bvec{p})Q\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right)R\left((\bvec{q}, \bvec{p})\rightarrow(\bvec{q}', \bvec{p}')\right)}{P(\bvec{q}', \bvec{p}')Q((\bvec{q}', \bvec{p}')\rightarrow(\bvec{q}, \bvec{p}))R((\bvec{q}', \bvec{p}')\rightarrow(\bvec{q}, \bvec{p}))}\\=\frac{P(\bvec{q}, \bvec{p})\min(1,\exp(H(\bvec{q}, \bvec{p})-H(\bvec{q}', \bvec{p}'))}{P(\bvec{q}', \bvec{p}')\min(1,\exp(H(\bvec{q}', \bvec{p}')-H(\bvec{q}, \bvec{p}))}=1.
+\end{multline}
 
 % Figure refraction for Lemma 1
 \begin{wrapfigure}{R}{0.45\textwidth}
@@ -288,7 +289,7 @@ the proposal distribution, Then, the usual proof of correctness for Metropolis-H
 \input figs1/refract1
 %\includegraphics[scale=0.5,trim = 0mm 70mm 0mm 25mm, clip]{tpr/BN3.pdf}
 \vspace{-30pt}
-\caption{Transformation  $\mathcal{T}: \tuple{\bvec{q}, \bvec{p}} \rightarrow \tuple{\bvec{q}', \bvec{p}'}$ 
+\caption{Transformation  $\mathcal{T}:\! \tuple{\bvec{q}, \!\bvec{p}} \!\rightarrow\! \tuple{\bvec{q}', \!\bvec{p}'}$ 
 described by Lemma~\ref{lemma1} (Refraction).}
 \label{Fig:sec1.BN3}
 \end{wrapfigure}
@@ -462,10 +463,10 @@ $.  Thus,
 {\partial p_{j}}=0.
 \]
 %
-Therefore, if we explicitly write out the Jacobian of $\mathcal{T}$, it is
-\begin{multline}
+Therefore, if we explicitly write out the Jacobian determinant $|J|$ of the transformation $\mathcal{T}$, it is 
+\begin{align}
 \label{e:bozboz}
-|J|=\left|\begin{array}{cccccc}
+\left|\begin{array}{c c c c c c}
 %1
 \frac{\partial q'_{1}}{\partial q_{1}} & \frac{\partial q'_{1}}{\partial p_{1}} & \cdots & \frac{\partial q'_{1}}{\partial p_{k-1}} & \frac{\partial q'_{1}}{\partial q_{k}} & \frac{\partial q'_{1}}{\partial p_{k}}\\
 %2
@@ -497,7 +498,7 @@ Therefore, if we explicitly write out the Jacobian of $\mathcal{T}$, it is
 0 & 0 & \cdots & 0 & 1 & \frac{\partial q'_{k}}{\partial p_{k}}\\
 0 & 0 & \cdots & 0 & 0 & 1
 \end{array}\right| 
-\end{multline}
+\end{align}
 
 Now, using standard properties of the determinant, we have that
 $
